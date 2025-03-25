@@ -52,6 +52,74 @@ func (c *Client) DownloadImage(ctx context.Context, imgToken, outDir string) (st
 	return filename, nil
 }
 
+type DownloadBoardImageReq struct {
+	WhiteboardId string `path:"whiteboard_id"`
+}
+
+type DownloadBoardMediaResp struct {
+	File     io.Reader `json:"file,omitempty"`
+	Filename string    `json:"fileKey,omitempty"`
+}
+
+type DownloadBoardImageResp struct {
+	Code int64                   `json:"code,omitempty"`
+	Msg  string                  `json:"msg,omitempty"`
+	Data *DownloadBoardMediaResp `json:"data,omitempty"`
+}
+
+func (r *DownloadBoardImageResp) SetReader(file io.Reader) {
+	if r.Data == nil {
+		r.Data = &DownloadBoardMediaResp{}
+	}
+	r.Data.File = file
+}
+
+func (r *DownloadBoardImageResp) SetFilename(filename string) {
+	if r.Data == nil {
+		r.Data = &DownloadBoardMediaResp{}
+	}
+	r.Data.Filename = filename
+}
+
+// https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/board-v1/whiteboard/download_as_image?appId=cli_a7682c95f4f21013
+func (c *Client) DownloadBoardImage(ctx context.Context, boardToken, outDir string) (string, error) {
+	fmt.Printf("Downloading board image: %s\n", boardToken)
+	req := &lark.RawRequestReq{
+		Scope:  "Board",
+		API:    "DownloadBoardImage",
+		Method: "GET",
+		URL:    c.larkClient.OpenBaseURL() + "/open-apis/board/v1/whiteboards/:whiteboard_id/download_as_image",
+		Body: &DownloadBoardImageReq{
+			WhiteboardId: boardToken,
+		},
+		MethodOption:          &lark.MethodOption{},
+		NeedTenantAccessToken: true,
+		NeedUserAccessToken:   true,
+	}
+	respData := new(DownloadBoardImageResp)
+	_, err := c.larkClient.RawRequest(ctx, req, respData)
+	if err != nil {
+		return boardToken, err
+	}
+	resp := respData.Data
+	fileext := filepath.Ext(resp.Filename)
+	filename := fmt.Sprintf("%s/%s%s", outDir, boardToken, fileext)
+	err = os.MkdirAll(filepath.Dir(filename), 0o755)
+	if err != nil {
+		return boardToken, err
+	}
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0o666)
+	if err != nil {
+		return boardToken, err
+	}
+	defer file.Close()
+	_, err = io.Copy(file, resp.File)
+	if err != nil {
+		return boardToken, err
+	}
+	return filename, nil
+}
+
 func (c *Client) DownloadImageRaw(ctx context.Context, imgToken, imgDir string) (string, []byte, error) {
 	resp, _, err := c.larkClient.Drive.DownloadDriveMedia(ctx, &lark.DownloadDriveMediaReq{
 		FileToken: imgToken,

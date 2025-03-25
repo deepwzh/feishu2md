@@ -13,6 +13,7 @@ import (
 type Parser struct {
 	useHTMLTags bool
 	ImgTokens   []string
+	BoardTokens []string
 	blockMap    map[string]*lark.DocxBlock
 }
 
@@ -20,6 +21,7 @@ func NewParser(config OutputConfig) *Parser {
 	return &Parser{
 		useHTMLTags: config.UseHTMLTags,
 		ImgTokens:   make([]string, 0),
+		BoardTokens: make([]string, 0),
 		blockMap:    make(map[string]*lark.DocxBlock),
 	}
 }
@@ -187,8 +189,19 @@ func (p *Parser) ParseDocxBlock(b *lark.DocxBlock, indentLevel int) string {
 		buf.WriteString(p.ParseDocxBlockQuoteContainer(b))
 	case lark.DocxBlockTypeGrid:
 		buf.WriteString(p.ParseDocxBlockGrid(b, indentLevel))
+	case lark.DocxBlockTypeBoard:
+		buf.WriteString(p.ParseDocxBlockBoard(b.Board))
 	default:
 	}
+	return buf.String()
+}
+
+func (p *Parser) ParseDocxBlockBoard(b *lark.DocxBlockBoard) string {
+	token := b.Token
+	buf := new(strings.Builder)
+	buf.WriteString(fmt.Sprintf("![](%s)", token))
+	buf.WriteString("\n")
+	p.BoardTokens = append(p.BoardTokens, token)
 	return buf.String()
 }
 

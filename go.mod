@@ -4,23 +4,23 @@ go 1.21
 
 require (
 	github.com/88250/lute v1.7.3
-	github.com/chyroc/lark v0.0.98-0.20220914014759-f9ad5a16e595
+	github.com/chyroc/lark v0.0.114-0.20240910031712-5adf90a88536
 	github.com/joho/godotenv v1.4.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/urfave/cli/v2 v2.6.0
 )
 
 require (
+	github.com/chyroc/lark_rate_limiter v0.1.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/pkg/errors v0.9.1
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 )
 
 require (
 	github.com/alecthomas/chroma v0.9.2 // indirect
 	github.com/bytedance/sonic v1.8.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
-	github.com/chyroc/lark_rate_limiter v0.1.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

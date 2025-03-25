@@ -68,6 +68,15 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 			}
 			markdown = strings.Replace(markdown, imgToken, localLink, 1)
 		}
+		for _, boardToken := range parser.BoardTokens {
+			localLink, err := client.DownloadBoardImage(
+				ctx, boardToken, filepath.Join(opts.outputDir, dlConfig.Output.ImageDir),
+			)
+			if err != nil {
+				return err
+			}
+			markdown = strings.Replace(markdown, boardToken, localLink, 1)
+		}
 	}
 
 	// Format the markdown document
