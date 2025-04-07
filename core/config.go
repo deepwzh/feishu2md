@@ -19,6 +19,7 @@ type FeishuConfig struct {
 
 type OutputConfig struct {
 	ImageDir        string `json:"image_dir"`
+	ImageBaseDir    string `json:"image_base_dir"`
 	TitleAsFilename bool   `json:"title_as_filename"`
 	UseHTMLTags     bool   `json:"use_html_tags"`
 	SkipImgDownload bool   `json:"skip_img_download"`
@@ -34,6 +35,7 @@ func NewConfig(appId, appSecret string) *Config {
 			ImageDir:        "static",
 			TitleAsFilename: false,
 			UseHTMLTags:     false,
+			ImageBaseDir:    "",
 			SkipImgDownload: false,
 		},
 	}

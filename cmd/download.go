@@ -20,6 +20,8 @@ type DownloadOpts struct {
 	dump      bool
 	batch     bool
 	wiki      bool
+
+	imageBaseDir string
 }
 
 var dlOpts = DownloadOpts{}
@@ -66,7 +68,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 			if err != nil {
 				return err
 			}
-			markdown = strings.Replace(markdown, imgToken, localLink, 1)
+			markdown = strings.Replace(markdown, imgToken, opts.imageBaseDir+localLink, 1)
 		}
 		for _, boardToken := range parser.BoardTokens {
 			localLink, err := client.DownloadBoardImage(
@@ -75,7 +77,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 			if err != nil {
 				return err
 			}
-			markdown = strings.Replace(markdown, boardToken, localLink, 1)
+			markdown = strings.Replace(markdown, boardToken, opts.imageBaseDir+localLink, 1)
 		}
 	}
 
@@ -222,7 +224,7 @@ func downloadWiki(ctx context.Context, client *core.Client, url string) error {
 				}
 			}
 			if n.ObjType == "docx" {
-				opts := DownloadOpts{outputDir: folderPath, dump: dlOpts.dump, batch: false}
+				opts := DownloadOpts{outputDir: folderPath, dump: dlOpts.dump, batch: false, imageBaseDir: dlOpts.imageBaseDir}
 				wg.Add(1)
 				semaphore <- struct{}{}
 				go func(_url string) {
@@ -270,6 +272,8 @@ func handleDownloadCommand(url string) error {
 		dlConfig.Feishu.AppId, dlConfig.Feishu.AppSecret,
 	)
 	ctx := context.Background()
+
+	dlOpts.imageBaseDir = dlConfig.Output.ImageBaseDir
 
 	if dlOpts.batch {
 		return downloadDocuments(ctx, client, url)

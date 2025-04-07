@@ -78,7 +78,7 @@ func (r *DownloadBoardImageResp) SetFilename(filename string) {
 	if r.Data == nil {
 		r.Data = &DownloadBoardMediaResp{}
 	}
-	r.Data.Filename = filename
+	r.Data.Filename = filename + ".png"
 }
 
 // https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/board-v1/whiteboard/download_as_image?appId=cli_a7682c95f4f21013
