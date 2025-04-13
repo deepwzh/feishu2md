@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,11 +28,16 @@ type DownloadOpts struct {
 var dlOpts = DownloadOpts{}
 var dlConfig core.Config
 
-func downloadDocument(ctx context.Context, client *core.Client, url string, opts *DownloadOpts) error {
+type donwloadDocumentResp struct {
+	Path  string `json:"path"`
+	Title string `json:"title"`
+}
+
+func downloadDocument(ctx context.Context, client *core.Client, url string, opts *DownloadOpts) (*donwloadDocumentResp, error) {
 	// Validate the url to download
 	docType, docToken, err := utils.ValidateDocumentURL(url)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	fmt.Println("Captured document token:", docToken)
 
@@ -46,7 +52,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 		docToken = node.ObjToken
 	}
 	if docType == "docs" {
-		return errors.Errorf(
+		return nil, errors.Errorf(
 			`Feishu Docs is no longer supported. ` +
 				`Please refer to the Readme/Release for v1_support.`)
 	}
@@ -66,7 +72,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 				ctx, imgToken, filepath.Join(opts.outputDir, dlConfig.Output.ImageDir),
 			)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			markdown = strings.Replace(markdown, imgToken, opts.imageBaseDir+localLink, 1)
 		}
@@ -75,7 +81,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 				ctx, boardToken, filepath.Join(opts.outputDir, dlConfig.Output.ImageDir),
 			)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			markdown = strings.Replace(markdown, boardToken, opts.imageBaseDir+localLink, 1)
 		}
@@ -90,7 +96,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 	// Handle the output directory and name
 	if _, err := os.Stat(opts.outputDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(opts.outputDir, 0o755); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -107,7 +113,7 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 		pdata := utils.PrettyPrint(data)
 
 		if err = os.WriteFile(outputPath, []byte(pdata), 0o644); err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Printf("Dumped json response to %s\n", outputPath)
 	}
@@ -119,11 +125,14 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 	}
 	outputPath := filepath.Join(opts.outputDir, mdName)
 	if err = os.WriteFile(outputPath, []byte(result), 0o644); err != nil {
-		return err
+		return nil, err
 	}
 	fmt.Printf("Downloaded markdown file to %s\n", outputPath)
 
-	return nil
+	return &donwloadDocumentResp{
+		Path:  outputPath,
+		Title: title,
+	}, nil
 }
 
 func downloadDocuments(ctx context.Context, client *core.Client, url string) error {
@@ -156,7 +165,7 @@ func downloadDocuments(ctx context.Context, client *core.Client, url string) err
 				// concurrently download the document
 				wg.Add(1)
 				go func(_url string) {
-					if err := downloadDocument(ctx, client, _url, &opts); err != nil {
+					if _, err := downloadDocument(ctx, client, _url, &opts); err != nil {
 						errChan <- err
 					}
 					wg.Done()
@@ -180,6 +189,45 @@ func downloadDocuments(ctx context.Context, client *core.Client, url string) err
 	return nil
 }
 
+func readLastNodeCache(spaceID string) (map[string]*WikeNodeItem, error) {
+	path := filepath.Join(".cache", spaceID+".json")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return make(map[string]*WikeNodeItem), nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	nodes := make(map[string]*WikeNodeItem)
+	if err = json.Unmarshal(data, &nodes); err != nil {
+		return nil, err
+	}
+	return nodes, nil
+}
+
+func saveLastNodeCache(spaceID string, nodes map[string]*WikeNodeItem) error {
+	path := filepath.Join(".cache", spaceID+".json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.Marshal(nodes)
+	if err != nil {
+		return err
+	}
+	if err = os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+	return nil
+}
+
+type WikeNodeItem struct {
+	NodeToken   string `json:"node_token"`
+	ObjEditTime string `json:"obj_edit_time"`
+	ObjType     string `json:"obj_type"`
+	Title       string `json:"title"`
+	Path        string `json:"path"`
+}
+
 func downloadWiki(ctx context.Context, client *core.Client, url string) error {
 	prefixURL, spaceID, err := utils.ValidateWikiURL(url)
 	if err != nil {
@@ -193,6 +241,10 @@ func downloadWiki(ctx context.Context, client *core.Client, url string) error {
 	if folderPath == "" {
 		return fmt.Errorf("failed to GetWikiName")
 	}
+
+	oldWikiNodes, _ := readLastNodeCache(spaceID)
+	// 记录当前所有文档的树状结构，用来做增量的下载支持
+	wikiNodes := make(map[string]*WikeNodeItem)
 
 	errChan := make(chan error)
 
@@ -216,6 +268,13 @@ func downloadWiki(ctx context.Context, client *core.Client, url string) error {
 			return err
 		}
 		for _, n := range nodes {
+			wikiNodeItem := &WikeNodeItem{
+				NodeToken:   n.NodeToken,
+				ObjType:     n.ObjType,
+				ObjEditTime: n.ObjEditTime,
+				Title:       n.Title,
+			}
+			// if n.ObjEditTime
 			if n.HasChild {
 				_folderPath := filepath.Join(folderPath, n.Title)
 				if err := downloadWikiNode(ctx, client,
@@ -224,18 +283,33 @@ func downloadWiki(ctx context.Context, client *core.Client, url string) error {
 				}
 			}
 			if n.ObjType == "docx" {
+				//
+				if oldNode, ok := oldWikiNodes[n.NodeToken]; ok {
+					// 如果新节点的修改时间晚于旧节点的修改时间，需要重新下载；否则跳过下载
+					if oldNode.ObjEditTime >= n.ObjEditTime {
+						wikiNodeItem.Title = oldNode.Title
+						wikiNodeItem.Path = oldNode.Path
+						wikiNodes[n.NodeToken] = wikiNodeItem
+						continue
+					}
+				}
 				opts := DownloadOpts{outputDir: folderPath, dump: dlOpts.dump, batch: false, imageBaseDir: dlOpts.imageBaseDir}
 				wg.Add(1)
 				semaphore <- struct{}{}
 				go func(_url string) {
-					if err := downloadDocument(ctx, client, _url, &opts); err != nil {
+					resp, err := downloadDocument(ctx, client, _url, &opts)
+					if err != nil {
 						errChan <- err
+					} else {
+						wikiNodeItem.Title = resp.Title
+						wikiNodeItem.Path = resp.Path
 					}
 					wg.Done()
 					<-semaphore
 				}(prefixURL + "/wiki/" + n.NodeToken)
 				// downloadDocument(ctx, client, prefixURL+"/wiki/"+n.NodeToken, &opts)
 			}
+			wikiNodes[n.NodeToken] = wikiNodeItem
 		}
 		return nil
 	}
@@ -243,6 +317,22 @@ func downloadWiki(ctx context.Context, client *core.Client, url string) error {
 	if err = downloadWikiNode(ctx, client, spaceID, folderPath, nil); err != nil {
 		return err
 	}
+
+	// 新增：计算需要删除的文件列表
+	var filesToDelete []string
+	for token, oldNode := range oldWikiNodes {
+		if _, exists := wikiNodes[token]; !exists {
+			filesToDelete = append(filesToDelete, oldNode.Path)
+		}
+	}
+
+	for _, filePath := range filesToDelete {
+		if err := os.Remove(filePath); err == nil {
+			fmt.Printf("Deleted file: %s\n", filePath)
+		}
+	}
+
+	saveLastNodeCache(spaceID, wikiNodes)
 
 	// Wait for all the downloads to finish
 	go func() {
@@ -283,5 +373,6 @@ func handleDownloadCommand(url string) error {
 		return downloadWiki(ctx, client, url)
 	}
 
-	return downloadDocument(ctx, client, url, &dlOpts)
+	_, err = downloadDocument(ctx, client, url, &dlOpts)
+	return err
 }
